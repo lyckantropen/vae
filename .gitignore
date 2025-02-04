@@ -104,3 +104,9 @@ celerybeat.pid
 
 # SageMath parsed files
 *.sage.py
+
+# tensorboard
+runs/
+
+# VSCode
+.vscode/

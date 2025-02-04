@@ -5,10 +5,34 @@ description = "A VAE package using PyTorch"
 authors = ["Karol Trojanowski <trojanowski.ifuj@gmail.com>"]
 license = "MIT"
 
+[[tool.poetry.source]]
+name = "PyPi"
+priority = "primary"
+
+[[tool.poetry.source]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cu126"
+priority = "supplemental"
+
 [tool.poetry.dependencies]
 python = "^3.11"
-torch = "^2"
+torch = {version = "^2.6.0", source = "pytorch"}
+torchvision = {version = "^0.21.0", source = "pytorch"}
+flake8 = "^7.1.1"
+mypy = "^1.14.1"
+gdown = "^5.2.0"
+autopep8 = "^2.3.2"
+flake8-pyproject = "^1.2.3"
+tensorboard = "^2.18.0"
+torch-tb-profiler = "^0.4"
+tqdm = "^4.67.1"
 
 [build-system]
 requires = ["poetry-core>=1.0.0"]
 build-backend = "poetry.core.masonry.api"
+
+[tool.flake8]
+max-line-length = 160
+
+[tool.autopep8]
+max_line_length = 160
