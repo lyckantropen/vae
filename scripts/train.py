@@ -423,10 +423,12 @@ class VaeTraining:
             logger.info(f'Test Loss: {test_loss.item()}')
             self.writer.add_scalar('Test loss', test_loss.item(), epoch)
 
-            # Check if current model is best
-            is_best = bool(test_loss < self.best_loss)
-            if is_best:
-                self.best_loss = test_loss
+            # Check if current model is best (unless beta annealing is active)
+            is_best = False
+            if self.criterion.beta >= self.beta_max:
+                is_best = bool(test_loss < self.best_loss)
+                if is_best:
+                    self.best_loss = test_loss
 
             # Save checkpoint
             self._save_checkpoint(epoch, test_loss, is_best)

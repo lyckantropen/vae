@@ -280,7 +280,7 @@ class ImageVae(torch.nn.Module):
         z = z_mean + z_std * torch.randn_like(z_mean, device=self.device)
         return z
 
-    def generate(self):
+    def generate(self, num_samples=1):
         with torch.no_grad():
-            z = torch.randn((1, self.hidden_dim), device=self.device)
+            z = torch.randn((num_samples, self.hidden_dim), device=self.device)
             return torch.clip(self.decoder(z), 0, 1)
