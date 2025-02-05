@@ -352,14 +352,14 @@ class VaeTraining:
                               input_size=64,
                               output_size=64)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=10, verbose=True)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=10, verbose=True, threshold=1e-4)
         self.criterion = ImageVaeLoss(beta=self.beta, likelihood_type=self.likelihood_type)
         self.model = self.model.to(self.device)
 
     def _get_run_name(self, base_name: str) -> str:
         """Generate a run name based on the base name and current arguments."""
         return f"{base_name}_lf={self.likelihood_type}_hid={self.hidden_dim}_exp_enc={self.expand_dim_enc}_exp_dec={self.expand_dim_dec}" \
-            f"_embed={self.embed_factor}_bmax={self.beta_max}_lr={self.learning_rate}"
+            f"_embed={self.type_of_embedding}_bmax={self.beta_max}"
 
     def _resume_from_checkpoint(self, override_saved_args: bool, model_state_only: bool, reset_optimizer: bool, **args) -> None:
         """Resume training from a checkpoint."""
@@ -519,6 +519,7 @@ def reset_optimizer_param_conv(value: str) -> Union[bool, str]:
 
 
 def main():
+    logger.setLevel(logging.DEBUG)
     parser = argparse.ArgumentParser()
     parser.add_argument('base_run_name', type=str, help='The base name for the run')
     parser.add_argument('--runs_dir', type=Path, default=Path('runs'), help='Directory to save the runs')
@@ -543,9 +544,6 @@ def main():
     parser.add_argument('--detect_posterior_collapse', action='store_true', help='Whether to detect posterior collapse')
 
     args = vars(parser.parse_args())
-
-    # set up logging to standard output
-    logging.basicConfig(level=logging.DEBUG)
 
     training = VaeTraining(**args)
     training.train()
