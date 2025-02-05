@@ -78,6 +78,7 @@ class Encoder(torch.nn.Module):
         x = torch.relu(self.cnn3(x))
         x = x.view(x.size(0), -1)
         x = self.dense(x)
+
         # split the vector in half
         return torch.relu(x[:, :self.hidden_dim]), torch.relu(x[:, self.hidden_dim:])
 
@@ -222,8 +223,6 @@ class ImageVaeLoss(torch.nn.Module):
         if kl_divergence < 1e-9:
             logger.warning('KL divergence is close to zero, possible posterior collapse.')
 
-        # free bits trick
-        kl_divergence = torch.maximum(kl_divergence, torch.tensor(float(1/z_mean.size(1)), device=x.device))
         return neg_log_likelihood + self.beta.to(x.device)*kl_divergence, neg_log_likelihood, kl_divergence
 
 

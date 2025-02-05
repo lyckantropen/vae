@@ -74,6 +74,10 @@ class VaeTraining:
         Whether to override saved arguments with new ones, by default False.
     reset_optimizer : Union[bool, str], optional
         Whether to reset the optimizer, by default False.
+    data_root : Path, optional
+        Root directory for the data, by default Path('data').
+    detect_posterior_collapse : bool, optional
+        Whether to detect posterior collapse, by default False.
     **args
         Additional arguments for the training configuration.
 
@@ -160,6 +164,7 @@ class VaeTraining:
                  override_saved_args: bool = False,
                  reset_optimizer: Union[bool, str] = False,
                  data_root: Path = Path('data'),
+                 detect_posterior_collapse: bool = False,
                  **args
                  ) -> None:
         self.model: ImageVae
@@ -186,6 +191,7 @@ class VaeTraining:
         self.start_epoch: int = 0
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         self.best_loss: torch.Tensor = torch.tensor(float('inf'))
+        self.detect_posterior_collapse: bool = detect_posterior_collapse
 
         self.scenario = 'unknown'
 
@@ -348,18 +354,23 @@ class VaeTraining:
         self.start_epoch = 0
         self._create_model()
 
-    def _save_checkpoint(self, epoch: int, test_loss: torch.Tensor, is_best: bool) -> None:
+    def _save_checkpoint(self, epoch: int, test_loss: torch.Tensor, is_best: bool, posterior_collapse_mode: bool) -> None:
         """Save a checkpoint of the current model state."""
         path = self.checkpoint_path
+        if posterior_collapse_mode:
+            path = path.parent / 'checkpoint_posterior_collapse.pth'
         if is_best:
             path = path.parent / 'checkpoint_best.pth'
+
+        logger.info(f'Saving checkpoint at {path}')
         torch.save({
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
             'criterion_state_dict': self.criterion.state_dict(),
             'test_loss': test_loss.item(),
-            'args': self._get_args_dict()
+            'args': self._get_args_dict(),
+            'posterior_collapse': posterior_collapse_mode
         }, path)
 
         if is_best:
@@ -430,8 +441,15 @@ class VaeTraining:
                 if is_best:
                     self.best_loss = test_loss
 
+            # Detect posterior collapse
+            posterior_collapse = False
+            if self.detect_posterior_collapse:
+                if avg_kld < 1e-3:
+                    posterior_collapse = True
+                    logger.warning('Posterior collapse detected')
+
             # Save checkpoint
-            self._save_checkpoint(epoch, test_loss, is_best)
+            self._save_checkpoint(epoch, test_loss, is_best, posterior_collapse)
 
             # write reconstructed sample to tensorboard
             x_hat_rec = (x_hat*255.0).to(torch.uint8)
@@ -473,6 +491,7 @@ def main():
     parser.add_argument('--num_epochs', type=int, default=1000, help='The number of epochs for training')
     parser.add_argument('--initial_checkpoint_path', type=str, default=None, help='Path to the initial checkpoint to resume training from')
     parser.add_argument('--data_root', type=Path, default=Path('data'), help='Root directory for the data')
+    parser.add_argument('--detect_posterior_collapse', action='store_true', help='Whether to detect posterior collapse')
 
     args = vars(parser.parse_args())
 

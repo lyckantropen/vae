@@ -19,6 +19,10 @@ def generate_samples(checkpoint_path: str, num_samples: int, output_path: str, g
     checkpoint = torch.load(checkpoint_path, map_location=device)
     args = checkpoint['args']
 
+    # Warn about posterior collapse
+    if checkpoint['posterior_collapse']:
+        logger.warning('Posterior collapse detected. Generated samples may not be diverse.')
+
     # Create model
     model = ImageVae(device=device,
                      hidden_dim=args['hidden_dim'],
