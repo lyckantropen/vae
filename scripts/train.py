@@ -364,9 +364,10 @@ class VaeTraining:
     def _resume_from_checkpoint(self, override_saved_args: bool, model_state_only: bool, reset_optimizer: bool, **args) -> None:
         """Resume training from a checkpoint."""
         checkpoint = torch.load(self.checkpoint_path)
+        read_args = checkpoint['args'].copy()
         if override_saved_args:
-            checkpoint['args'].update(args)
-        self._load_args_from_dict(checkpoint['args'])
+            read_args.update(args)
+        self._load_args_from_dict(read_args)
         if model_state_only:
             self.start_epoch = 0
             self._create_model()
@@ -382,6 +383,8 @@ class VaeTraining:
 
             try:
                 self.criterion.load_state_dict(checkpoint['criterion_state_dict'] if 'criterion_state_dict' in checkpoint else checkpoint['loss'])
+                if override_saved_args:
+                    self.criterion.beta.fill_(self.beta)
             except RuntimeError as e:
                 logger.warning(f'Could not load criterion state dict from checkpoint: {e}')
 
