@@ -441,14 +441,25 @@ class VaeTraining:
             self._generate_test_samples(epoch)
 
 
+def reset_optimizer_param_conv(value: str) -> Union[bool, str]:
+    if value.lower() in {'true', 'yes', '1'}:
+        return True
+    elif value.lower() in {'false', 'no', '0'}:
+        return False
+    elif value.lower() == 'only_at_import':
+        return 'only_at_import'
+    else:
+        raise argparse.ArgumentTypeError(f'Invalid value for reset_optimizer: {value}')
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('base_run_name', type=str, help='The base name for the run')
     parser.add_argument('--runs_dir', type=Path, default=Path('runs'), help='Directory to save the runs')
     parser.add_argument('--resume_if_exists', action='store_true', help='Whether to resume training if a checkpoint exists')
     parser.add_argument('--override_saved_args', action='store_true', help='Whether to override saved arguments with new ones')
-    parser.add_argument('--reset_optimizer', type=Union[bool, str], default=False,
-                        choices=[True, False, 'only_at_import'], help='Whether to reset the optimizer')
+    parser.add_argument('--reset_optimizer', type=reset_optimizer_param_conv, default=False,
+                        help='Whether to reset the optimizer (True, False, or "only_at_import")')
     parser.add_argument('--batch_size', type=int, default=96, help='The batch size for training')
     parser.add_argument('--embed_factor', type=float, default=1.0, help='The embedding factor for the targets')
     parser.add_argument('--beta', type=float, default=0.001, help='The beta parameter for the VAE loss')
