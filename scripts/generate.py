@@ -23,12 +23,18 @@ def generate_samples(checkpoint_path: str, num_samples: int, output_path: str, g
     if 'posterior_collapse' in checkpoint and checkpoint['posterior_collapse']:
         logger.warning('Posterior collapse detected. Generated samples may not be diverse.')
 
+    input_dims = 1
+    if 'type_of_embedding' in args and args['type_of_embedding'] == 'cat':
+        input_dims = 2
+    elif 'type_of_embedding' in args and args['type_of_embedding'] == 'one_hot':
+        input_dims = 11
+
     # Create model
     model = ImageVae(device=device,
                      hidden_dim=args['hidden_dim'],
                      expand_dim_enc=args['expand_dim_enc'],
                      expand_dim_dec=args['expand_dim_dec'],
-                     input_dims=2,
+                     input_dims=input_dims,
                      output_dims=1,
                      input_size=64,
                      output_size=64)
