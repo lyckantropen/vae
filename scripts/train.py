@@ -207,6 +207,7 @@ class VaeTraining:
         self.num_epochs: int
         self.type_of_embedding: str
         self.run_name: str
+        self.scheduler: optim.lr_scheduler.ReduceLROnPlateau
 
         self.original_run_name: Optional[str] = None
         self.start_epoch: int = 0
@@ -344,6 +345,7 @@ class VaeTraining:
                               input_size=64,
                               output_size=64)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=10, verbose=True)
         self.criterion = ImageVaeLoss(beta=self.beta, likelihood_type=self.likelihood_type)
         self.model = self.model.to(self.device)
 
@@ -366,9 +368,10 @@ class VaeTraining:
             self.start_epoch = checkpoint['epoch'] + 1
             self._create_model()
             self.model.load_state_dict(checkpoint['model_state_dict'])
-            if reset_optimizer:
-                logger.debug('Resetting optimizer')
+            if not reset_optimizer:
                 self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+            else:
+                logger.debug('Resetting optimizer')
 
             try:
                 self.criterion.load_state_dict(checkpoint['criterion_state_dict'] if 'criterion_state_dict' in checkpoint else checkpoint['loss'])
@@ -424,7 +427,7 @@ class VaeTraining:
         torch.autograd.set_detect_anomaly(True)
         for epoch in range(self.start_epoch, self.num_epochs):
             # summarize current parameters
-            logger.info(f'Epoch {epoch+1}/{self.num_epochs}, Beta: {self.criterion.beta.item()}')
+            logger.info(f'Epoch {epoch+1}/{self.num_epochs}, Beta: {self.criterion.beta.item()}, Learning rate: {self.optimizer.param_groups[0]["lr"]}')
 
             self.model.train()
             losses = []
@@ -460,11 +463,14 @@ class VaeTraining:
             self.writer.add_scalar('Rec loss', avg_mse, epoch)
             self.writer.add_scalar('KL div', avg_kld, epoch)
             self.writer.add_scalar('Beta', self.criterion.beta, epoch)
+            self.writer.add_scalar('Learning rate', self.optimizer.param_groups[0]['lr'], epoch)
 
             # Test loss
             test_loss, x_hat = test_epoch(self.model, self.dataloader_test, self.criterion, self.embed_factor, self.type_of_embedding)
             logger.info(f'Test Loss: {test_loss.item()}')
             self.writer.add_scalar('Test loss', test_loss.item(), epoch)
+
+            self.scheduler.step(test_loss)
 
             # Check if current model is best (unless beta annealing is active)
             is_best = False
