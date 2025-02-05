@@ -191,7 +191,13 @@ class ImageVaeLoss(torch.nn.Module):
         self.beta = torch.nn.Parameter(torch.tensor(beta, requires_grad=False), requires_grad=False)
         self.likelihood_type = likelihood_type
 
-    def forward(self, x: torch.Tensor, x_hat: torch.Tensor, z_mean: torch.Tensor, z_logv: torch.Tensor, sigma_x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def forward(self,
+                x: torch.Tensor,
+                x_hat: torch.Tensor,
+                z_mean: torch.Tensor,
+                z_logv: torch.Tensor,
+                sigma_x: torch.Tensor
+                ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
         Compute the VAE loss given the input tensors.
 

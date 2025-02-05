@@ -33,6 +33,7 @@ DEFAULT_ARGS: Dict[str, Any] = {
 
 
 def set_up_tensorboard(root, run_name):
+    """Set up TensorBoard for logging."""
     try:
         from torch.utils.tensorboard import SummaryWriter
         return SummaryWriter(f'{root}/{run_name}')
@@ -41,7 +42,13 @@ def set_up_tensorboard(root, run_name):
         raise e
 
 
-def test_epoch(model: ImageVae, dataloader: DataLoader, criterion: ImageVaeLoss, embed_factor: float, type_of_embedding: str = 'cat') -> Tuple[torch.Tensor, torch.Tensor]:
+def test_epoch(model: ImageVae,
+               dataloader: DataLoader,
+               criterion: ImageVaeLoss,
+               embed_factor: float,
+               type_of_embedding: str = 'cat'
+               ) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Test the model on the test dataset for one epoch."""
     model.eval()
     losses = []
     with torch.no_grad():
