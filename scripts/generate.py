@@ -20,7 +20,7 @@ def generate_samples(checkpoint_path: str, num_samples: int, output_path: str, g
     args = checkpoint['args']
 
     # Warn about posterior collapse
-    if checkpoint['posterior_collapse']:
+    if 'posterior_collapse' in checkpoint and checkpoint['posterior_collapse']:
         logger.warning('Posterior collapse detected. Generated samples may not be diverse.')
 
     # Create model
