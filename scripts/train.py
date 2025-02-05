@@ -245,6 +245,10 @@ class VaeTraining:
         elif self.scenario == 'resume_from_other':
             assert initial_checkpoint_path is not None and Path(initial_checkpoint_path).exists()
 
+            self._load_args_from_dict(args)
+            self.run_name = self._get_run_name(base_run_name)
+            self.checkpoint_path = runs_dir / self.run_name / 'checkpoint.pth'
+
             logger.info(f'Copying checkpoint from {initial_checkpoint_path} to {self.checkpoint_path}')
             self.checkpoint_path.parent.mkdir(parents=True, exist_ok=True)
             self.checkpoint_path.write_bytes(Path(initial_checkpoint_path).read_bytes())
