@@ -27,7 +27,8 @@ DEFAULT_ARGS: Dict[str, Any] = {
     'expand_dim_enc': 32,
     'expand_dim_dec': 24,
     'learning_rate': 1e-2,
-    'num_epochs': 1000
+    'num_epochs': 1000,
+    'type_of_embedding': 'cat'
 }
 
 
@@ -40,7 +41,7 @@ def set_up_tensorboard(root, run_name):
         raise e
 
 
-def test_epoch(model: ImageVae, dataloader: DataLoader, criterion: ImageVaeLoss, embed_factor: float) -> Tuple[torch.Tensor, torch.Tensor]:
+def test_epoch(model: ImageVae, dataloader: DataLoader, criterion: ImageVaeLoss, embed_factor: float, type_of_embedding: str = 'cat') -> Tuple[torch.Tensor, torch.Tensor]:
     model.eval()
     losses = []
     with torch.no_grad():
@@ -48,12 +49,31 @@ def test_epoch(model: ImageVae, dataloader: DataLoader, criterion: ImageVaeLoss,
             x, targets = batch
             x = x.to(model.device)
             targets = targets.to(model.device)
-            # embed the targets into the input
-            embed = torch.cat([x, embed_factor*targets.view(-1, 1, 1, 1).repeat(1, 1, x.size(-2), x.size(-1))], dim=1)
+            embed = embed_labels_into_input(x, targets, embed_factor, type_of_embedding)
             x_hat, z_mean, z_logv = model(embed)
             loss, _, _ = criterion(x, x_hat, z_mean, z_logv, model.sigma_x)
             losses.append(loss)
     return torch.stack(losses).mean(), x_hat[0:1].detach()
+
+
+def one_hot_embedding(labels: torch.Tensor, num_classes: int) -> torch.Tensor:
+    """Convert labels to one-hot encoding."""
+    y = torch.eye(num_classes, device=labels.device)
+    return y[labels]
+
+
+def embed_labels_into_input(x: torch.Tensor, targets: torch.Tensor, embed_factor: float, type_of_embedding: str = 'cat') -> torch.Tensor:
+    """Embed the targets into the input."""
+    if type_of_embedding == 'none':
+        embed = x
+    elif type_of_embedding == 'cat':
+        embed = torch.cat([x, embed_factor*targets.view(-1, 1, 1, 1).repeat(1, 1, x.size(-2), x.size(-1))], dim=1)
+    elif type_of_embedding == 'one_hot':
+        one_hot_targets = one_hot_embedding(targets, num_classes=10)
+        embed = torch.cat([x, embed_factor*one_hot_targets.view(-1, 10, 1, 1).repeat(1, 1, x.size(-2), x.size(-1))], dim=1)
+    else:
+        raise ValueError(f'Unknown type of embedding: {type_of_embedding}')
+    return embed
 
 
 class VaeTraining:
@@ -185,6 +205,7 @@ class VaeTraining:
         self.expand_dim_dec: int
         self.learning_rate: float
         self.num_epochs: int
+        self.type_of_embedding: str
         self.run_name: str
 
         self.original_run_name: Optional[str] = None
@@ -282,6 +303,7 @@ class VaeTraining:
         self.expand_dim_dec = args['expand_dim_dec'] if 'expand_dim_dec' in args else DEFAULT_ARGS['expand_dim_dec']
         self.learning_rate = args['learning_rate'] if 'learning_rate' in args else DEFAULT_ARGS['learning_rate']
         self.num_epochs = args['num_epochs'] if 'num_epochs' in args else DEFAULT_ARGS['num_epochs']
+        self.type_of_embedding = args['type_of_embedding'] if 'type_of_embedding' in args else DEFAULT_ARGS['type_of_embedding']
 
     def _get_args_dict(self) -> Dict[str, Any]:
         """Return the current arguments as a dictionary."""
@@ -297,16 +319,23 @@ class VaeTraining:
             'expand_dim_enc': self.expand_dim_enc,
             'expand_dim_dec': self.expand_dim_dec,
             'learning_rate': self.learning_rate,
-            'num_epochs': self.num_epochs
+            'num_epochs': self.num_epochs,
+            'type_of_embedding': self.type_of_embedding
         }
 
     def _create_model(self) -> None:
         """Create the VAE model, optimizer, and loss function."""
+        input_dims = 1
+        if self.type_of_embedding == 'cat':
+            input_dims = 2
+        elif self.type_of_embedding == 'one_hot':
+            input_dims = 11
+
         self.model = ImageVae(device=self.device,
                               hidden_dim=self.hidden_dim,
                               expand_dim_enc=self.expand_dim_enc,
                               expand_dim_dec=self.expand_dim_dec,
-                              input_dims=2,
+                              input_dims=input_dims,
                               output_dims=1,
                               input_size=64,
                               output_size=64)
@@ -401,8 +430,7 @@ class VaeTraining:
                 x, targets = batch
                 x = x.to(self.device)
                 targets = targets.to(self.device)
-                # embed the targets into the input
-                embed = torch.cat([x, self.embed_factor*targets.view(-1, 1, 1, 1).repeat(1, 1, x.size(-2), x.size(-1))], dim=1)
+                embed = embed_labels_into_input(x, targets, self.embed_factor, self.type_of_embedding)
                 self.optimizer.zero_grad()
                 x_hat, z_mean, z_logv = self.model(embed)
                 loss, mse, kld = self.criterion(x, x_hat, z_mean, z_logv, self.model.sigma_x)
@@ -430,7 +458,7 @@ class VaeTraining:
             self.writer.add_scalar('Beta', self.criterion.beta, epoch)
 
             # Test loss
-            test_loss, x_hat = test_epoch(self.model, self.dataloader_test, self.criterion, self.embed_factor)
+            test_loss, x_hat = test_epoch(self.model, self.dataloader_test, self.criterion, self.embed_factor, self.type_of_embedding)
             logger.info(f'Test Loss: {test_loss.item()}')
             self.writer.add_scalar('Test loss', test_loss.item(), epoch)
 
@@ -491,6 +519,7 @@ def main():
     parser.add_argument('--num_epochs', type=int, default=1000, help='The number of epochs for training')
     parser.add_argument('--initial_checkpoint_path', type=str, default=None, help='Path to the initial checkpoint to resume training from')
     parser.add_argument('--data_root', type=Path, default=Path('data'), help='Root directory for the data')
+    parser.add_argument('--type_of_embedding', type=str, default='cat', help='Type of embedding for the targets (none, cat, one_hot)')
     parser.add_argument('--detect_posterior_collapse', action='store_true', help='Whether to detect posterior collapse')
 
     args = vars(parser.parse_args())
