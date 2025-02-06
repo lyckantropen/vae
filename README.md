@@ -84,13 +84,22 @@ To train the VAE model with MSE loss for 100 epochs, run the following command:
 python scripts/train.py my_run --likelihood_type mse --num_epochs 100
 ```
 
+## Print model information
+
+To print the information of the pre-trained model
+`pretrained/checkpoint_best.pth`, run the following command:
+
+```sh
+python scripts/generate.py --checkpoint_path pretrained/checkpoint_best.pth --info_only
+```
+
 ## Generating samples
 
 To generate samples using the pre-trained model from the previous example, run
 the following command:
 
 ```sh
-python scripts/generate.py --checkpoint_path runs/my_run/checkpoint.pth --num_samples 64 --output_path samples.png --grid_size 8
+python scripts/generate.py --checkpoint_path pretrained/checkpoint_best.pth --num_samples 64 --output_path samples.png --grid_size 8
 ```
 
 ## Bibliography
