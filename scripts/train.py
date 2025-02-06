@@ -28,7 +28,8 @@ DEFAULT_ARGS: Dict[str, Any] = {
     'expand_dim_dec': 24,
     'learning_rate': 1e-2,
     'num_epochs': 1000,
-    'type_of_embedding': 'cat'
+    'type_of_embedding': 'cat',
+    'model_version': None
 }
 
 
@@ -158,6 +159,13 @@ class VaeTraining:
         The best loss achieved so far.
     scenario : str
         The scenario for training (e.g., 'resume_from_checkpoint', 'start_from_scratch').
+    detect_posterior_collapse : bool
+        Whether to detect posterior collapse.
+    checkpoint_path : Path
+        The path to the checkpoint file.
+    writer : SummaryWriter
+        The TensorBoard writer for logging
+
 
     Methods
     -------
@@ -214,6 +222,7 @@ class VaeTraining:
         self.num_epochs: int
         self.type_of_embedding: str
         self.run_name: str
+        self.model_version: Optional[str]
         self.scheduler: optim.lr_scheduler.ReduceLROnPlateau
 
         self.original_run_name: Optional[str] = None
@@ -316,6 +325,7 @@ class VaeTraining:
         self.learning_rate = args['learning_rate'] if 'learning_rate' in args else DEFAULT_ARGS['learning_rate']
         self.num_epochs = args['num_epochs'] if 'num_epochs' in args else DEFAULT_ARGS['num_epochs']
         self.type_of_embedding = args['type_of_embedding'] if 'type_of_embedding' in args else DEFAULT_ARGS['type_of_embedding']
+        self.model_version = args['model_version'] if 'model_version' in args else DEFAULT_ARGS['model_version']
 
     def _get_args_dict(self) -> Dict[str, Any]:
         """Return the current arguments as a dictionary."""
@@ -332,7 +342,8 @@ class VaeTraining:
             'expand_dim_dec': self.expand_dim_dec,
             'learning_rate': self.learning_rate,
             'num_epochs': self.num_epochs,
-            'type_of_embedding': self.type_of_embedding
+            'type_of_embedding': self.type_of_embedding,
+            'model_version': self.model_version
         }
 
     def _create_model(self) -> None:
@@ -350,9 +361,10 @@ class VaeTraining:
                               input_dims=input_dims,
                               output_dims=1,
                               input_size=64,
-                              output_size=64)
+                              output_size=64,
+                              version=self.model_version)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=10, verbose=True, threshold=1e-4)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=10, verbose=True, threshold=1e-2)
         self.criterion = ImageVaeLoss(beta=self.beta, likelihood_type=self.likelihood_type)
         self.model = self.model.to(self.device)
 
@@ -541,6 +553,8 @@ def main():
     parser.add_argument('--initial_checkpoint_path', type=str, default=None, help='Path to the initial checkpoint to resume training from')
     parser.add_argument('--data_root', type=Path, default=Path('data'), help='Root directory for the data')
     parser.add_argument('--type_of_embedding', type=str, default='cat', help='Type of embedding for the targets (none, cat, one_hot)')
+    parser.add_argument('--model_version', type=str, default=None,
+                        choices=[None, 'v1', 'v2'], help='Version of the model (default is None which is identical to v1)')
     parser.add_argument('--detect_posterior_collapse', action='store_true', help='Whether to detect posterior collapse')
 
     args = vars(parser.parse_args())
