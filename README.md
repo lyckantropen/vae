@@ -13,11 +13,11 @@ I **don't tell it** which numbers to generate.
 ## Explanation
 
 A Variational Autoencoder is a type of a generative model that attempts to learn
-the distribution of the data by approximating the data distribution as a
-latent-variable model with a Gaussian latent variable. Instead of blindly
-sampling the latent space in hope for generating relevant samples, it jointly
-learns a parametrization of the latent space as well as the mapping from the
-latent space to the space of generated samples, based on real examples.
+the distribution of the data by expressing it as a latent-variable model with
+a Gaussian latent variable. Instead of blindly sampling the latent space in
+hope for generating relevant samples, it jointly learns a parametrization of
+the latent space along with a mapping from the latent space to the space of
+generated samples, based on real examples.
 
 The parametrization of the latent space is modeled using a contracting deep
 convolutional network, the output of which is used to predict the mean and
@@ -29,7 +29,7 @@ convolutional network that maps random samples from the latent space to images.
 ![VAE](vae.png)
 
 Once the mapping is learned, it is enough to feed **random** samples from a
-multivariate normal distribution (Gaussian with mean and variance set to zero)
+multivariate normal distribution (Gaussian with zero mean and variance set to one)
 **to the decoder** to generate meaningful images like the ones seen during
 training.
 
