@@ -370,7 +370,8 @@ class VaeTraining:
 
     def _get_run_name(self, base_name: str) -> str:
         """Generate a run name based on the base name and current arguments."""
-        return f"{base_name}_lf={self.likelihood_type}_hid={self.hidden_dim}_exp_enc={self.expand_dim_enc}_exp_dec={self.expand_dim_dec}" \
+        ver = self.model_version if self.model_version is not None else 'v1'
+        return f"{base_name}_v={ver}_lf={self.likelihood_type}_hid={self.hidden_dim}_exp_enc={self.expand_dim_enc}_exp_dec={self.expand_dim_dec}" \
             f"_embed={self.type_of_embedding}_bmax={self.beta_max}"
 
     def _resume_from_checkpoint(self, override_saved_args: bool, model_state_only: bool, reset_optimizer: bool, **args) -> None:
