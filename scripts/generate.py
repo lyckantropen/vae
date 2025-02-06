@@ -29,6 +29,8 @@ def generate_samples(checkpoint_path: str, num_samples: int, output_path: str, g
     elif 'type_of_embedding' in args and args['type_of_embedding'] == 'one_hot':
         input_dims = 11
 
+    version = args['version'] if 'version' in args else 'v1'
+
     # Create model
     model = ImageVae(device=device,
                      hidden_dim=args['hidden_dim'],
@@ -37,7 +39,8 @@ def generate_samples(checkpoint_path: str, num_samples: int, output_path: str, g
                      input_dims=input_dims,
                      output_dims=1,
                      input_size=64,
-                     output_size=64)
+                     output_size=64,
+                     version=version)
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
     model.eval()

@@ -5,6 +5,7 @@ from typing import Any, Dict, Optional, Tuple, Union, cast
 
 import torch
 import torch.optim as optim
+import torchvision.utils as vutils
 from torch.utils.data import DataLoader
 from torchvision import datasets, transforms
 from tqdm import tqdm
@@ -440,9 +441,9 @@ class VaeTraining:
         """Generate test samples and log them to TensorBoard."""
         self.model.eval()
         with torch.no_grad():
-            for _ in range(4):
-                sample = (self.model.generate()*255.0).to(torch.uint8).detach()
-                self.writer.add_images('Generated samples', sample, epoch)
+            sample = (self.model.generate(16)*255.0).to(torch.uint8).detach()
+            grid = vutils.make_grid(sample, nrow=4, normalize=False).unsqueeze(0)
+            self.writer.add_images('Generated samples', grid, epoch)
 
     def train(self) -> None:
         """The main training loop for the VAE model."""
