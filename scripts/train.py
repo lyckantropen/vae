@@ -111,64 +111,6 @@ class VaeTraining:
     **args
         Additional arguments for the training configuration.
 
-    Attributes
-    ----------
-    model : ImageVae
-        The VAE model.
-    optimizer : optim.Optimizer
-        The optimizer for training the model.
-    criterion : ImageVaeLoss
-        The loss function for the VAE model.
-    dataset : datasets.MNIST
-        The MNIST dataset.
-    transform : transforms.Compose
-        The transformations applied to the dataset.
-    dataloader_train : DataLoader
-        DataLoader for the training dataset.
-    dataloader_test : DataLoader
-        DataLoader for the test dataset.
-    batch_size : int
-        The batch size for training.
-    embed_factor : float
-        The embedding factor for the targets.
-    beta : float
-        The beta parameter for the VAE loss.
-    beta_max : float
-        The maximum value of beta for annealing.
-    beta_annealing_period : int
-        The period over which beta is annealed.
-    likelihood_type : str
-        The type of likelihood used in the VAE loss.
-    hidden_dim : int
-        The hidden dimension size for the VAE model.
-    expand_dim_enc : int
-        The expansion dimension for the encoder.
-    expand_dim_dec : int
-        The expansion dimension for the decoder.
-    learning_rate : float
-        The learning rate for the optimizer.
-    num_epochs : int
-        The number of epochs for training.
-    run_name : str
-        The name of the current run.
-    original_run_name : Optional[str]
-        The original run name if resuming from a checkpoint.
-    start_epoch : int
-        The starting epoch for training.
-    device : torch.device
-        The device used for training (CPU or GPU).
-    best_loss : torch.Tensor
-        The best loss achieved so far.
-    scenario : str
-        The scenario for training (e.g., 'resume_from_checkpoint', 'start_from_scratch').
-    detect_posterior_collapse : bool
-        Whether to detect posterior collapse.
-    checkpoint_path : Path
-        The path to the checkpoint file.
-    writer : SummaryWriter
-        The TensorBoard writer for logging
-
-
     Methods
     -------
     _setup_mnist()
@@ -366,7 +308,7 @@ class VaeTraining:
                               output_size=64,
                               version=self.model_version)
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate)
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=10, verbose=True, threshold=1e-2)
+        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=10, verbose=True, threshold=1e-3)
         self.criterion = ImageVaeLoss(beta=self.beta, likelihood_type=self.likelihood_type)
         self.model = self.model.to(self.device)
 
@@ -389,21 +331,25 @@ class VaeTraining:
         if model_state_only:
             self.start_epoch = 0
             self._create_model()
-            self.model.load_state_dict(checkpoint['model_state_dict'])
+            self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
         else:
             self.start_epoch = checkpoint['epoch'] + 1
             self._create_model()
-            self.model.load_state_dict(checkpoint['model_state_dict'])
-            if not reset_optimizer:
-                self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-            else:
-                logger.debug('Resetting optimizer')
+            self.model.load_state_dict(checkpoint['model_state_dict'], strict=False)
+
+            try:
+                if not reset_optimizer:
+                    self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+                else:
+                    logger.debug('Resetting optimizer')
+            except BaseException as e:
+                logger.warning(f'Could not load optimizer state dict from checkpoint: {e}')
 
             try:
                 self.criterion.load_state_dict(checkpoint['criterion_state_dict'] if 'criterion_state_dict' in checkpoint else checkpoint['loss'])
                 if override_saved_args:
                     self.criterion.beta.fill_(self.beta)
-            except RuntimeError as e:
+            except BaseException as e:
                 logger.warning(f'Could not load criterion state dict from checkpoint: {e}')
 
             best_checkpoint = Path(self.checkpoint_path.parent / 'checkpoint_best.pth')
@@ -452,7 +398,6 @@ class VaeTraining:
     def train(self) -> None:
         """The main training loop for the VAE model."""
         # Training loop
-        torch.autograd.set_detect_anomaly(True)
         for epoch in range(self.start_epoch, self.num_epochs):
             # summarize current parameters
             logger.info(f'Epoch {epoch+1}/{self.num_epochs}, Beta: {self.criterion.beta.item()}, Learning rate: {self.optimizer.param_groups[0]["lr"]}')

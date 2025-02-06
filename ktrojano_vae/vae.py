@@ -1,10 +1,22 @@
 from logging import getLogger
 from pathlib import Path
-from typing import Tuple, Optional
+from typing import Optional, Tuple
 
 import torch
 
 logger = getLogger(Path(__file__).stem)
+
+
+class SigmoidSymmetric(torch.nn.Module):
+    """A sigmoid activation function that maps to the range [-scale, scale]."""
+
+    def __init__(self, scale: float = 1.0, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.sigmoid = torch.nn.Sigmoid()
+        self.scale = scale
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return self.scale*2.0 * self.sigmoid(x) - 1.0*self.scale
 
 
 class Encoder(torch.nn.Module):
@@ -24,27 +36,10 @@ class Encoder(torch.nn.Module):
         The size of the input image (default is 64).
     expand_dim : int, optional
         The number of filters in the convolutional layers (default is 32).
+    final_activation : str, optional
+        The final activation function to use, one of 'sigmoid' or 'hardtanh' (default is 'sigmoid').
     version : str, optional
         The version of the encoder to use (default is None).
-
-    Attributes
-    ----------
-    input_size : int
-        The size of the input image.
-    latent_size : int
-        The size of the latent representation.
-    expand_dim : int
-        The number of filters in the convolutional layers.
-    hidden_dim : int
-        The dimension of the hidden layer.
-    cnn1 : torch.nn.Conv2d
-        The first convolutional layer.
-    cnn2 : torch.nn.Conv2d
-        The second convolutional layer.
-    cnn3 : torch.nn.Conv2d
-        The third convolutional layer.
-    dense : torch.nn.Linear
-        The fully connected layer.
 
     Methods
     -------
@@ -59,6 +54,7 @@ class Encoder(torch.nn.Module):
                  input_dims: int = 3,
                  input_size: int = 64,
                  expand_dim: int = 32,
+                 final_activation: str = 'sigmoid',
                  version: Optional[str] = None
                  ) -> None:
         super().__init__()
@@ -67,11 +63,27 @@ class Encoder(torch.nn.Module):
         self.expand_dim = expand_dim
         self.hidden_dim = hidden_dim
         self.version = version
+        self.final_activation_mu: torch.nn.Module
+        self.final_activation_logv: torch.nn.Module
 
         self.cnn1 = torch.nn.Conv2d(input_dims, expand_dim, kernel_size=3, stride=2, padding=1)
+        self.act1 = torch.nn.ReLU()
         self.cnn2 = torch.nn.Conv2d(expand_dim, expand_dim, kernel_size=3, stride=2, padding=1)
+        self.act2 = torch.nn.ReLU()
         self.cnn3 = torch.nn.Conv2d(expand_dim, expand_dim, kernel_size=3, stride=2, padding=1)
+        self.act3 = torch.nn.ReLU()
         self.dense = torch.nn.Linear(self.latent_size*self.latent_size*expand_dim, hidden_dim*2)
+        self.mu_scale = torch.nn.Parameter(torch.tensor(10.0), requires_grad=True)
+        self.logv_scale = torch.nn.Parameter(torch.ones(1, hidden_dim)*10.0, requires_grad=True)
+
+        if final_activation == 'sigmoid':
+            self.final_activation_mu = SigmoidSymmetric()
+            self.final_activation_logv = torch.nn.Sigmoid()
+        elif final_activation == 'hardtanh':
+            self.final_activation_mu = torch.nn.Hardtanh(-1.0, 1.0)
+            self.final_activation_logv = torch.nn.Hardtanh(0.0, 1.0)
+        else:
+            raise ValueError(f'Unknown final activation: {final_activation}')
 
         self._initialize_weights()
 
@@ -82,14 +94,18 @@ class Encoder(torch.nn.Module):
         torch.nn.init.kaiming_normal_(self.dense.weight, mode='fan_out', nonlinearity='relu')
 
     def forward(self, x: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
-        x = torch.relu(self.cnn1(x))
-        x = torch.relu(self.cnn2(x))
-        x = torch.relu(self.cnn3(x))
+        with torch.no_grad():
+            self.mu_scale.clamp_(min=1.0, max=100.0)
+            self.logv_scale.clamp_(min=1.0, max=100.0)
+        x = self.act1(self.cnn1(x))
+        x = self.act2(self.cnn2(x))
+        x = self.act3(self.cnn3(x))
         x = x.view(x.size(0), -1)
         x = self.dense(x)
 
         # split the vector in half
-        return torch.relu(x[:, :self.hidden_dim]), torch.relu(x[:, self.hidden_dim:])
+        return (self.final_activation_mu(x[:, :self.hidden_dim])*self.mu_scale,
+                torch.log(self.final_activation_logv(x[:, self.hidden_dim:])*self.logv_scale + 1e-8))
 
 
 class Decoder(torch.nn.Module):
@@ -116,23 +132,6 @@ class Decoder(torch.nn.Module):
     version : str, optional
         The version of the decoder to use (default is None).
 
-    Attributes
-    ----------
-    output_size : int
-        The spatial size of the output image.
-    latent_size : int
-        The spatial size of the latent representation.
-    expand_dim : int
-        The number of feature maps in the intermediate layers.
-    dense : torch.nn.Linear
-        Fully connected layer to expand the latent space representation.
-    cnn1 : torch.nn.ConvTranspose2d
-        First transposed convolutional layer.
-    cnn2 : torch.nn.ConvTranspose2d
-        Second transposed convolutional layer.
-    cnn3 : torch.nn.ConvTranspose2d
-        Third transposed convolutional layer.
-
     Methods
     -------
     _initialize_weights()
@@ -156,14 +155,19 @@ class Decoder(torch.nn.Module):
         self.version = version
 
         self.dense = torch.nn.Linear(hidden_dim, expand_dim*self.latent_size*self.latent_size)
+        self.act0 = torch.nn.ReLU()
+        self.shuffle = torch.nn.PixelShuffle(self.latent_size)
         self.cnn1 = torch.nn.ConvTranspose2d(expand_dim, expand_dim, kernel_size=4, stride=2, padding=1)
+        self.act1 = torch.nn.ReLU()
         self.cnn2 = torch.nn.ConvTranspose2d(expand_dim, expand_dim, kernel_size=4, stride=2, padding=1)
+        self.act2 = torch.nn.ReLU()
 
         if version is None or version == 'v1':
             self.cnn3 = torch.nn.ConvTranspose2d(expand_dim, output_dims, kernel_size=4, stride=2, padding=1)
             self.cnn4 = None
         elif version == 'v2':
             self.cnn3 = torch.nn.ConvTranspose2d(expand_dim, output_dims*2, kernel_size=4, stride=2, padding=1)
+            self.act3 = torch.nn.ReLU()
             self.cnn4 = torch.nn.Conv2d(output_dims*2, output_dims, kernel_size=3, stride=1, padding=1)
         else:
             raise ValueError(f'Unknown version: {version}')
@@ -187,14 +191,14 @@ class Decoder(torch.nn.Module):
             torch.nn.init.kaiming_normal_(self.cnn4.weight, mode='fan_out', nonlinearity='relu')
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x = torch.relu(self.dense(x))
+        x = self.act0(self.dense(x))
         x = x.view(x.size(0), x.size(1), 1, 1)
-        x = torch.nn.functional.pixel_shuffle(x, self.latent_size)
-        x = torch.relu(self.cnn1(x))
-        x = torch.relu(self.cnn2(x))
+        x = self.shuffle(x)
+        x = self.act1(self.cnn1(x))
+        x = self.act2(self.cnn2(x))
         x = self.cnn3(x)
         if self.cnn4 is not None:
-            x = self.cnn4(torch.relu(x))
+            x = self.cnn4(self.act3(x))
         x = self.final_activation(x)
         return x
 
@@ -217,13 +221,6 @@ class ImageVaeLoss(torch.nn.Module):
     -------
     forward(x, x_hat, z_mean, z_logv, sigma_x)
         Computes the VAE loss given the input tensors.
-
-    Attributes
-    ----------
-    beta : torch.nn.Parameter
-        The weight of the KL divergence term.
-    likelihood_type : str
-        The type of likelihood to use.
     """
 
     def __init__(self, beta: float = 1.0, likelihood_type: str = 'mse') -> None:
@@ -266,10 +263,10 @@ class ImageVaeLoss(torch.nn.Module):
             raise ValueError(f'Unknown likelihood type: {self.likelihood_type}')
 
         kl_divergence = 1./2. * torch.sum(z_logv.exp() + z_mean.pow(2) - 1 - z_logv)
-        if kl_divergence < 1e-9:
+        if kl_divergence < 1e-3:
             logger.warning('KL divergence is close to zero, possible posterior collapse.')
 
-        return neg_log_likelihood + self.beta.to(x.device)*kl_divergence, neg_log_likelihood, kl_divergence
+        return neg_log_likelihood + self.beta*kl_divergence, neg_log_likelihood, kl_divergence
 
 
 class ImageVae(torch.nn.Module):
