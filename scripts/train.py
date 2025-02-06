@@ -7,6 +7,7 @@ import torch
 import torch.optim as optim
 import torchvision.utils as vutils
 from torch.utils.data import DataLoader
+from torchsummary import summary
 from torchvision import datasets, transforms
 from tqdm import tqdm
 
@@ -368,6 +369,9 @@ class VaeTraining:
         self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(self.optimizer, mode='min', factor=0.5, patience=10, verbose=True, threshold=1e-2)
         self.criterion = ImageVaeLoss(beta=self.beta, likelihood_type=self.likelihood_type)
         self.model = self.model.to(self.device)
+
+        logger.info('Model information: ')
+        logger.info(summary(self.model, (input_dims, 64, 64), verbose=0, device=self.device))
 
     def _get_run_name(self, base_name: str) -> str:
         """Generate a run name based on the base name and current arguments."""
